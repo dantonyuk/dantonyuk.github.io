@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: 
+
+Sitemap: http://dmitry-at-hyla.github.io/sitemap.xml 
