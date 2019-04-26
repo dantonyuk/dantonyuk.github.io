@@ -3,9 +3,9 @@
 # ----------------------- #
 
 url: http://dmitry-at-hyla.github.io
-title: My Octopress Blog
-subtitle: A blogging framework for hackers.
-author: Your Name
+title: Java Masochist's Notes
+subtitle: How to stop loving Java and learn to worry.
+author: Dmitry Antonyuk
 simple_search: https://www.google.com/search
 description:
 
@@ -99,3 +99,5 @@ google_analytics_tracking_id:
 
 # Facebook Like
 facebook_like: false
+
+theme: jekyll-theme-cayman
