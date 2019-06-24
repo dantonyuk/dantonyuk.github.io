@@ -5,11 +5,11 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>Java Masochist's Notes</title>
+  <title>Developer's Notes</title>
   <meta name="author" content="Dmitry Antonyuk">
 
   
-  <meta name="description" content=" Blog Archives Recent Posts ">
+  <meta name="description" content="Prelude I&rsquo;ve been working on moving SpringBoot applications to SpringCloud. It&rsquo;s a complex task including libraries upgrade, &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -21,7 +21,7 @@
   <link rel="canonical" href="http://dmitry-at-hyla.github.io/">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
-  <link href="/atom.xml" rel="alternate" title="Java Masochist's Notes" type="application/atom+xml">
+  <link href="/atom.xml" rel="alternate" title="Developer's Notes" type="application/atom+xml">
   <script src="/javascripts/modernizr-2.0.js"></script>
   <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
   <script>!window.jQuery && document.write(unescape('%3Cscript src="/javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
@@ -36,7 +36,7 @@
 
 <body   >
   <header role="banner"><hgroup>
-  <h1><a href="/">Java Masochist's Notes</a></h1>
+  <h1><a href="/">Developer's Notes</a></h1>
   
     <h2>How to stop loving Java and learn to worry.</h2>
   
@@ -66,6 +66,113 @@
       <div class="blog-index">
   
   
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2019/05/17/the-bug-of-the-week-sequence-magic/">The Bug of the Week: Sequence Magic</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2019-05-17T22:34:42-05:00'><span class='date'><span class='date-month'>May</span> <span class='date-day'>17</span><span class='date-suffix'>th</span>, <span class='date-year'>2019</span></span> <span class='time'>10:34 pm</span></time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h2>Prelude</h2>
+
+<p>I&rsquo;ve been working on moving SpringBoot applications to SpringCloud. It&rsquo;s a complex task including libraries upgrade, infrastructure adjustment, changing the way we handle settings etc. As a part of this task SpringBoot should be migrated to 2nd version.</p>
+
+<p>Once I&rsquo;m done with an application, I test it, deploy to the dev environment, test it again there (not really much, sometimes it&rsquo;s just checking logs and hitting a few endpoints using curl). If I&rsquo;m happy, the application is going further to the qa environment, so I can forget about it. For a little while. Well, you know how it goes.</p>
+
+<h2>The Thing Comes Up</h2>
+
+<p>On a daily meeting my collegue reported an issue she ran into while testing her code in the dev environment. Violation of primary key constraint, nothing out of the ordinary. We already experienced similar issues, so she got the most reasonable advice: check sequences, reset them if needed. Maybe database restore was made incorrectly. It happens.</p>
+
+<p>As it was mentioned before there was a lot of changes made in order to migrate the application to SpringCloud. The changes were not related to the sequences, or the persistence layer at all. But there was a lot of changes, I concerned and my collegue got one more advice: test her changes on a stable branch. Just to make sure, it&rsquo;s not my changes. They should not, I was pretty certain. But
+who knows.</p>
+
+<h2>We Found the Source</h2>
+
+<p>Next day the collegue found out that a stable branch is working, and the issue is showing up only in my feature branch. Getting into the issue we&rsquo;ve found that the application tries to insert a record along with an ID that is less than sequence&rsquo;s last value.</p>
+
+<p>OK, the data issue theory is wrong. The main difference between these two branches is that upgraded SpringBoot was in use. Quick googling showed that Hibernate uses an optimization for sequence AUTO strategy, and suggested to turn optimization off with a flag:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>hibernate.id.new_generator_mappings = false</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Which could be reached in SpringBoot using</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='yaml'><span class='line'><span class="l-Scalar-Plain">spring</span><span class="p-Indicator">:</span>
+</span><span class='line'>  <span class="l-Scalar-Plain">jpa</span><span class="p-Indicator">:</span>
+</span><span class='line'>    <span class="l-Scalar-Plain">hibernate</span><span class="p-Indicator">:</span>
+</span><span class='line'>      <span class="l-Scalar-Plain">use-new-id-generator-mappings = false</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The problem was that we don&rsquo;t use AUTO strategy but SEQUENCE. Anyway I tested this solution just in case and it worked. Strange, isn&rsquo;t it?</p>
+
+<h2>The Exploration</h2>
+
+<p>To grok that behavior we went through the Hibernate documentation, codebase and several posts on the internet. This is what we got:</p>
+
+<p>SEQUENCE uses seqhilo optimization by default which works this way:</p>
+
+<ul>
+<li>Let&rsquo;s say DB sequence has an increment N</li>
+<li>The sequence is called for the next value, let&rsquo;s call it hi</li>
+<li>Hibernate uses identfiers range [(hi - 1) * N, hi * N)</li>
+<li>As soon as all the identifiers are used, repeat the loop</li>
+</ul>
+
+
+<p>Assuming that current value is 1 and increment is 10, next hi is going to be 11, so values from 1 to 10 are going to be used for the identifiers without hitting the database.</p>
+
+<p>If an increment is 1, the identifiers range is just [hi - 1, hi) which means that it contains the only value and it works as a regular DB sequence. And this is exactly what was in place before the migration.</p>
+
+<p>This part was well-known, but what I didn&rsquo;t know is that
+* Hibernate 3.2.3 <a href="http://in.relation.to/2007/04/10/new-323-hibernate-identifier-generators/">introduced</a> new enhanced optimizers in order to allow other non-hibernate applications use same sequence.
+* Since Hibernate 4 it&rsquo;s possible to enable these optimizers for AUTO, SEQUENCE and TABLE generators with <code>hibernate.id.new_generator_mappings</code> property set to true.
+* Starting with Hibernate 5 this property set to true by default.</p>
+
+<p>Now the most interesting part comes.</p>
+
+<p>We used SpringBoot 1.4.5 which uses Hibernate 5. That part that I was not able to get. Hibernate 5 uses enhanced generators by default, so old version should fail as well, right? My other collegue helped me with it. She mentioned that SpringBoot 1.4.5 turns the legacy behavior back. That why old code worked. But <a href="https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Guide#id-generator">SpringBoot 2 uses Hibernate default behavior</a> now. And that&rsquo;s the exact reason why we got it after migration.</p>
+
+<p>One more thing. Since we use JPA, Hibernate takes the value for increment from the <a href="https://docs.oracle.com/javaee/5/api/javax/persistence/SequenceGenerator.html#allocationSize%28%29">SequenceGenerator::allocationSize</a> property.</p>
+
+<h2>Possible Solutions</h2>
+
+<p>Having said that, following solutions could be used:</p>
+
+<ul>
+<li>turn on legacy behavior with the Hibernate or Spring flag set to false</li>
+<li>use allocationSize equals to 1</li>
+<li>set DB sequence&rsquo;s increment to 50 (default allocationSize value)</li>
+<li>specify <code>none</code> optimizer for the generator</li>
+<li>set IDENTITY generator if ID column is auto-incremented</li>
+</ul>
+
+</div>
+  
+  
+
+
+    </article>
+  
   <div class="pagination">
     
     <a href="/blog/archives">Blog Archives</a>
@@ -77,6 +184,10 @@
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2019/05/17/the-bug-of-the-week-sequence-magic/">The Bug of the Week: Sequence Magic</a>
+      </li>
     
   </ul>
 </section>

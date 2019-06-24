@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 
-  <title><![CDATA[Developer's Notes]]></title>
-  <link href="http://dmitry-at-hyla.github.io/atom.xml" rel="self"/>
+  <title><![CDATA[Category: Hibernate | Developer's Notes]]></title>
+  <link href="http://dmitry-at-hyla.github.io/blog/categories/hibernate/atom.xml" rel="self"/>
   <link href="http://dmitry-at-hyla.github.io/"/>
   <updated>2019-06-24T10:15:42-05:00</updated>
   <id>http://dmitry-at-hyla.github.io/</id>
@@ -37,22 +37,16 @@ who knows.</p>
 
 <p>OK, the data issue theory is wrong. The main difference between these two branches is that upgraded SpringBoot was in use. Quick googling showed that Hibernate uses an optimization for sequence AUTO strategy, and suggested to turn optimization off with a flag:</p>
 
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>hibernate.id.new_generator_mappings = false</span></code></pre></td></tr></table></div></figure>
-
+<pre><code>hibernate.id.new_generator_mappings = false
+</code></pre>
 
 <p>Which could be reached in SpringBoot using</p>
 
-<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-</pre></td><td class='code'><pre><code class='yaml'><span class='line'><span class="l-Scalar-Plain">spring</span><span class="p-Indicator">:</span>
-</span><span class='line'>  <span class="l-Scalar-Plain">jpa</span><span class="p-Indicator">:</span>
-</span><span class='line'>    <span class="l-Scalar-Plain">hibernate</span><span class="p-Indicator">:</span>
-</span><span class='line'>      <span class="l-Scalar-Plain">use-new-id-generator-mappings = false</span>
-</span></code></pre></td></tr></table></div></figure>
-
+<pre><code class="yaml">spring:
+  jpa:
+    hibernate:
+      use-new-id-generator-mappings = false
+</code></pre>
 
 <p>The problem was that we don&rsquo;t use AUTO strategy but SEQUENCE. Anyway I tested this solution just in case and it worked. Strange, isn&rsquo;t it?</p>
 
